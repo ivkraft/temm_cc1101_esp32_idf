@@ -1,0 +1,10 @@
+idf_component_register(
+    SRCS
+        "gfx.c"
+        "gfx_font8x8.c"
+    INCLUDE_DIRS
+        "include"
+    REQUIRES
+        display
+        board
+)
