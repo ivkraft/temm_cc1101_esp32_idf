@@ -1,4 +1,6 @@
-# ESP-IDF Project (VS Code / CLI)
+# ESP-IDF Project T-Embed CC1101 - Board: [LilyGO T-Embed CC1101](https://lilygo.cc/en-us/products/t-embed-cc1101)
+
+This is an attempt to build a complete, production-ready product entirely on the ESP-IDF SDK—avoiding the legacy issues that come with Arduino-based components and eliminating the dependency bloat and “noise” they often introduce.
 
 This repository contains an ESP32 project built with **Espressif ESP-IDF**.  
 Below are step-by-step instructions to install and initialize ESP-IDF, configure/build/flash the project, monitor logs over a COM/serial port, and push the project to GitHub from a local machine.
