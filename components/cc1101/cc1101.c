@@ -1,10 +1,11 @@
 #include "cc1101.h"
+#include "cc1101_regs.h"
 #include <string.h>
+#include <math.h>
 #include "esp_log.h"
 
 static const char *TAG = "cc1101";
 
-#define CC1101_READ_BURST  0xC0
 
 static esp_err_t xfer(cc1101_t *cc, const uint8_t *tx, uint8_t *rx, int len)
 {
@@ -55,4 +56,55 @@ esp_err_t cc1101_read_status(cc1101_t *cc, uint8_t addr, uint8_t *outv)
     esp_err_t err = xfer(cc, tx, rx, 2);
     if (err == ESP_OK) *outv = rx[1];
     return err;
+}
+
+esp_err_t cc1101_write_reg(cc1101_t *cc, uint8_t addr, uint8_t val)
+{
+    uint8_t tx[2] = { addr, val };
+    return xfer(cc, tx, NULL, 2);
+}
+
+
+esp_err_t cc1101_read_reg(cc1101_t *cc, uint8_t addr, uint8_t *outv)
+{
+    if (!outv) return ESP_ERR_INVALID_ARG;
+    uint8_t tx[2] = { (uint8_t)(addr | CC1101_READ_SINGLE), 0x00 };
+    uint8_t rx[2] = { 0, 0 };
+    esp_err_t err = xfer(cc, tx, rx, 2);
+    if (err == ESP_OK) *outv = rx[1];
+    return err;
+}
+
+esp_err_t cc1101_set_freq_hz(cc1101_t *cc, uint32_t freq_hz, uint32_t f_xosc_hz)
+{
+    // FREQ = freq_hz * 2^16 / f_xosc
+    uint32_t word = (uint32_t)llround((double)freq_hz * 65536.0 / (double)f_xosc_hz);
+
+    esp_err_t err;
+    err = cc1101_write_reg(cc, CC1101_FREQ2, (word >> 16) & 0xFF); if (err) return err;
+    err = cc1101_write_reg(cc, CC1101_FREQ1, (word >>  8) & 0xFF); if (err) return err;
+    err = cc1101_write_reg(cc, CC1101_FREQ0, (word >>  0) & 0xFF); return err;
+}
+
+
+esp_err_t cc1101_enter_rx(cc1101_t *cc)
+{
+    esp_err_t err = cc1101_strobe(cc, CC1101_SIDLE);
+    if (err != ESP_OK) return err;
+    return cc1101_strobe(cc, CC1101_SRX);
+}
+
+
+esp_err_t cc1101_read_rssi_dbm(cc1101_t *cc, int16_t *out_dbm)
+{
+    if (!out_dbm) return ESP_ERR_INVALID_ARG;
+    uint8_t raw = 0;
+
+    esp_err_t err = cc1101_read_status(cc, CC1101_RSSI, &raw);
+    if (err != ESP_OK) return err;
+
+    int rssi_dec = (raw >= 128) ? ((int)raw - 256) : (int)raw;
+    // datasheet: RSSI_dBm ≈ rssi_dec/2 - 74
+    *out_dbm = (int16_t)(rssi_dec / 2 - 74);
+    return ESP_OK;
 }

@@ -26,3 +26,12 @@ typedef struct {
 esp_err_t cc1101_init_dev(cc1101_t *cc, const cc1101_cfg_t *cfg);
 esp_err_t cc1101_strobe(cc1101_t *cc, uint8_t strobe);
 esp_err_t cc1101_read_status(cc1101_t *cc, uint8_t addr, uint8_t *outv);
+esp_err_t cc1101_write_reg(cc1101_t *cc, uint8_t addr, uint8_t val);
+esp_err_t cc1101_read_reg(cc1101_t *cc, uint8_t addr, uint8_t *outv);
+esp_err_t cc1101_set_freq_hz(cc1101_t *cc, uint32_t freq_hz, uint32_t f_xosc_hz);
+esp_err_t cc1101_enter_rx(cc1101_t *cc);
+esp_err_t cc1101_read_rssi_dbm(cc1101_t *cc, int16_t *out_dbm);
+
+
+
+

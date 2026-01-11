@@ -9,6 +9,12 @@
 #include "esp_err.h"
 #include "driver/spi_master.h"
 
+#define SPI_HOST SPI2_HOST
+
+#define TFT_SPI_HZ (40 * 1000 * 1000) // doesn't matter if you don't talk to TFT here
+#define CC_SPI_HZ (2 * 1000 * 1000)
+
+
 esp_err_t shared_spi_init(spi_host_device_t host,
                           int sclk, int mosi, int miso,
                           int max_transfer_sz);

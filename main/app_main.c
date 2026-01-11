@@ -18,6 +18,7 @@
 
 #include "board_pins.h"
 #include "cc1101.h"
+#include "cc1101_regs.h"
 #include "display.h"
 #include "driver/gpio.h"
 #include "driver/spi_master.h"
@@ -35,30 +36,11 @@
 #define PIN_CC_GDO0 3
 #define PIN_CC_GDO2 38
 
-#define CC1101_MDMCFG2 0x12 /** Modem configuration */
-#define CC1101_MDMCFG1 0x13 /** Modem configuration */
-#define CC1101_MDMCFG0 0x14 /** Modem configuration */
-
 // SPI host (host=1 in your logs)
-#define SPI_HOST SPI2_HOST
 
 // Clocks
-#define TFT_SPI_HZ (40 * 1000 * 1000) // doesn't matter if you don't talk to TFT here
-#define CC_SPI_HZ (2 * 1000 * 1000)
 
 // ---------------- CC1101 minimal defs ----------------
-#define CC1101_SRES 0x30
-
-// Status regs (read with addr | 0xC0)
-#define CC1101_PARTNUM 0x30
-#define CC1101_VERSION 0x31
-#define CC1101_MARCSTATE 0x35
-#define CC1101_RSSI 0x34
-
-#define CC1101_READ_SINGLE 0x80
-#define CC1101_READ_BURST 0xC0
-
-#define CC1101_SRX 0x34 // Стороб-команда перехода в RX
 
 static const char *TAG = "MAIN";
 
@@ -124,11 +106,7 @@ void app_main(void) {
     ESP_ERROR_CHECK(cc1101_read_status(&cc, CC1101_MARCSTATE, &marc));
     ESP_LOGI(TAG, "CC1101 PART=0x%02X VER=0x%02X MARC=0x%02X", part, ver, marc);
 
-    // 4) рисуем тестовый экран
-    // gfx_init();
-    // gfx_clear(gfx_rgb565(10,12,16));
-    // gfx_text(10, 10, "Hello ST7789", gfx_rgb565(235,235,235));
-    // gfx_present();
+    ESP_ERROR_CHECK(cc1101_set_freq_hz(&cc, 314350000UL, 26000000UL));
 
     const uint16_t bg = gfx_rgb565(10, 12, 16);
     const uint16_t panel = gfx_rgb565(18, 22, 28);
@@ -138,15 +116,13 @@ void app_main(void) {
     gfx_init();
     const int W = gfx_w();
     const int H = gfx_h();
-    char char_array[12];
-    snprintf(char_array, sizeof(char_array), "MARC=0x%02X", marc);
+
     gfx_clear(bg);
 
     gfx_fill_rect(6, 6, W - 12, H - 12, panel);
     gfx_rect(6, 6, W - 12, H - 12, gfx_rgb565(60, 70, 85));
 
     gfx_text_scale(14, 14, "MENU", text, 3);
-    gfx_text_scale(14, 14 + 8 * 3 + 4, char_array, text, 3);
     // gfx_line(12, 14 + 8 * 3 + 10, W - 13, 14 + 8 * 3 + 10, gfx_rgb565(60, 70, 85));
 
     const int scale = 2;
@@ -159,19 +135,32 @@ void app_main(void) {
 
     ESP_ERROR_CHECK(gfx_present());
     int i = 0;
-    char char_array2[12];
+    char char_MARC[12];
+    char char_RSSI[12];
+
+    esp_err_t err;
+    err = cc1101_write_reg(&cc, CC1101_MDMCFG0, 0x00);
+    err = cc1101_write_reg(&cc, CC1101_MDMCFG1, 0x02);
+    err = cc1101_write_reg(&cc, CC1101_MDMCFG2, 0x04);
+
+    vTaskDelay(pdMS_TO_TICKS(40));
+    ESP_ERROR_CHECK(cc1101_enter_rx(&cc));
+    vTaskDelay(pdMS_TO_TICKS(40));
+
 
     while (1) {
         gfx_clear(bg);
         gfx_fill_rect(6, 6, W - 12, H - 12, panel);
         gfx_rect(6, 6, W - 12, H - 12, gfx_rgb565(60, 70, 85));
-        marc = 0;
+        int16_t rssi = -127;
+        ESP_ERROR_CHECK(cc1101_read_rssi_dbm(&cc, &rssi));
         ESP_ERROR_CHECK(cc1101_read_status(&cc, CC1101_MARCSTATE, &marc));
-        snprintf(char_array, sizeof(char_array), "MARC=0x%02X", marc);
-        snprintf(char_array2, sizeof(char_array2), "%d", i);
-        gfx_text_scale(14, 14, char_array2, text, 3);
 
-        gfx_text_scale(14, 14 + 8 * 3 + 4, char_array, text, 3);
+        snprintf(char_MARC, sizeof(char_MARC), "MARC=0x%02X", marc);
+        snprintf(char_RSSI, sizeof(char_RSSI), "%d", rssi);
+        gfx_text_scale(14, 14, char_MARC, text, 3);
+
+        gfx_text_scale(14, 14 + 8 * 3 + 4, char_RSSI, text, 3);
         ESP_ERROR_CHECK(gfx_present());
 
         vTaskDelay(pdMS_TO_TICKS(500));
