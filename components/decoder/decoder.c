@@ -17,21 +17,21 @@ static bool IRAM_ATTR rmt_rx_done_callback(rmt_channel_handle_t channel, const r
     BaseType_t high_task_wakeup = pdFALSE;
     // Отправляем количество принятых символов в очередь
     xQueueSendFromISR(rmt_rx_evt_queue, &edata->num_symbols, &high_task_wakeup);
-   // printf("go\n");
+    // printf("go\n");
 
     return high_task_wakeup == pdTRUE;
 }
 
 void rmt_rx_loop_task(void *arg)
 {
-// 1. Создаем канал прямо здесь (раз ты не делаешь этого в main)
+    // 1. Создаем канал прямо здесь (раз ты не делаешь этого в main)
     rmt_rx_channel_config_t rx_chan_config = {
         .clk_src = RMT_CLK_SRC_DEFAULT,
-        .gpio_num = BOARD_CC1101_PIN_GDO0, 
+        .gpio_num = BOARD_CC1101_PIN_GDO0,
         .mem_block_symbols = 64,
         .resolution_hz = 100000, // 100 кГц (1 тик = 10 мкс)
     };
-    
+
     rmt_channel_handle_t rx_chan = NULL;
     ESP_ERROR_CHECK(rmt_new_rx_channel(&rx_chan_config, &rx_chan));
 
@@ -47,38 +47,84 @@ void rmt_rx_loop_task(void *arg)
 
     // 5. ВАЖНО: static выносит массив из стека в общую память, предотвращая Crash
     static rmt_symbol_word_t raw_symbols[1000];
-    
+
     // 6. Конфиг приема (настраиваем тайм-аут тишины)
     rmt_receive_config_t receive_config = {
-        .signal_range_min_ns = 10000, // 10 мкс минимум
+        .signal_range_min_ns = 10000,   // 10 мкс минимум
         .signal_range_max_ns = 2000000, // 2 мс максимум
     };
 
     printf("RMT Декодер инициализирован внутри задачи и запущен!\n");
     while (1)
     {
-        // Запускаем ожидание
-
         ESP_ERROR_CHECK(rmt_receive(rx_chan, raw_symbols, sizeof(raw_symbols), &receive_config));
 
         size_t num_symbols = 0;
         // Ждем сообщения из коллбэка о том, что прием окончен
         if (xQueueReceive(rmt_rx_evt_queue, &num_symbols, portMAX_DELAY))
         {
+            if (num_symbols < 32)
+                continue;
             printf("\n--- Пакет (%d) ---\n", (int)num_symbols);
+            uint32_t last_dur = 0;
+            int last_lvl = -1;
+            uint8_t current_byte = 0;
+            int bit_accumulator = 0;
+            const int BIT_BASE = 35; // Наша база 350 мкс (35 тиков)
 
             for (size_t i = 0; i < num_symbols; i++)
             {
-                uint32_t dur = (uint32_t)raw_symbols[i].duration0;
-                int lvl = raw_symbols[i].level0;
+                uint32_t durs[2] = {raw_symbols[i].duration0, raw_symbols[i].duration1};
+                int lvls[2] = {raw_symbols[i].level0, raw_symbols[i].level1};
 
-                // ПРОГРАММНЫЙ ФИЛЬТР: игнорируем всё, что короче 100 мкс
-                if (dur < 10)
+                for (int j = 0; j < 2; j++)
                 {
-                    continue;
-                }
+                    if (durs[j] == 0)
+                        continue;
 
-                printf("%c%lu ", lvl ? '+' : '-', dur*10);
+                    if (last_lvl == -1)
+                    {
+                        last_lvl = lvls[j];
+                        last_dur = durs[j];
+                    }
+                    else if (lvls[j] == last_lvl)
+                    {
+                        last_dur += durs[j];
+                    }
+                    else
+                    {
+                        if (durs[j] < 3)
+                        {
+                            last_dur += durs[j];
+                        }
+                        else
+                        {
+                            // --- ЛОГИКА ДЕКОДИРОВАНИЯ ТУТ ---
+                            if (last_dur >= 10)
+                            {
+                                // Вычисляем, сколько бит "влезло" в накопленную длительность
+                                // Добавляем 0.5 для правильного округления: (dur + base/2) / base
+                                int num_bits = (last_dur + (BIT_BASE / 2)) / BIT_BASE;
+
+                                for (int b = 0; b < num_bits; b++)
+                                {
+                                    current_byte = (current_byte << 1) | (last_lvl ? 1 : 0);
+                                    bit_accumulator++;
+
+                                    if (bit_accumulator == 8)
+                                    {
+                                        printf("%02X ", current_byte); // Печатаем готовый байт
+                                        current_byte = 0;
+                                        bit_accumulator = 0;
+                                    }
+                                }
+                            }
+                            // -------------------------------
+                            last_lvl = lvls[j];
+                            last_dur = durs[j];
+                        }
+                    }
+                }
             }
             printf("\n");
         }
