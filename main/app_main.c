@@ -26,6 +26,7 @@
 #include "gfx.h"
 #include "input.h"
 #include "shared_spi.h"
+#include "decoder.h"
 
 // ---------------- Pins (your T-Embed CC1101 wiring) ----------------
 #define PIN_SPI_MOSI 9
@@ -138,7 +139,7 @@ void app_main(void) {
     char char_RSSI[12];
 
     esp_err_t err;
-   err = cc1101_apply_preset_pairs_then_patable(&cc, subghz_device_cc1101_preset_2fsk_dev2_38khz_async_regs);
+   err = cc1101_apply_preset_pairs_then_patable(&cc, subghz_device_cc1101_preset_2fsk_dev12khz_async_regs);
     vTaskDelay(pdMS_TO_TICKS(40));
     ESP_ERROR_CHECK(cc1101_set_freq_hz(&cc, 314350000UL)); // 314.35 MHz
 
@@ -146,22 +147,42 @@ void app_main(void) {
     ESP_ERROR_CHECK(cc1101_enter_rx(&cc));
     vTaskDelay(pdMS_TO_TICKS(40));
 
+// ----------------------RMT
+
+
+    // Блок фильтра УДАЛЯЕМ. Сразу включаем:
+
+    // 4. ЗАПУСК ТВОЕЙ ЗАДАЧИ ИЗ decoder.c
+    // Мы передаем rx_chan как аргумент (void *arg)
+    xTaskCreatePinnedToCore(
+        rmt_rx_loop_task,   // Функция из decoder.c
+        "rmt_decoder",      // Имя
+        4096,               // Стек
+        NULL,    // Передаем хендл канала
+        5,                  // Приоритет
+        NULL, 
+        0                   // Ядро 1
+    );
+
+    ESP_LOGI("MAIN", "Декодер запущен!");
+// ----------------------
+
     while (1) {
-        gfx_clear(bg);
-        gfx_fill_rect(6, 6, W - 12, H - 12, panel);
-        gfx_rect(6, 6, W - 12, H - 12, gfx_rgb565(60, 70, 85));
-        int16_t rssi = -127;
-        ESP_ERROR_CHECK(cc1101_read_rssi_dbm(&cc, &rssi));
-        ESP_ERROR_CHECK(cc1101_read_status(&cc, CC1101_MARCSTATE, &marc));
+        // gfx_clear(bg);
+        // gfx_fill_rect(6, 6, W - 12, H - 12, panel);
+        // gfx_rect(6, 6, W - 12, H - 12, gfx_rgb565(60, 70, 85));
+        // int16_t rssi = -127;
+        // ESP_ERROR_CHECK(cc1101_read_rssi_dbm(&cc, &rssi));
+        // ESP_ERROR_CHECK(cc1101_read_status(&cc, CC1101_MARCSTATE, &marc));
 
-        snprintf(char_MARC, sizeof(char_MARC), "MARC=0x%02X", marc);
-        snprintf(char_RSSI, sizeof(char_RSSI), "%d", rssi);
-        gfx_text_scale(14, 14, char_MARC, text, 3);
+        // snprintf(char_MARC, sizeof(char_MARC), "MARC=0x%02X", marc);
+        // snprintf(char_RSSI, sizeof(char_RSSI), "%d", rssi);
+        // gfx_text_scale(14, 14, char_MARC, text, 3);
 
-        gfx_text_scale(14, 14 + 8 * 3 + 4, char_RSSI, text, 3);
-        ESP_ERROR_CHECK(gfx_present());
+        // gfx_text_scale(14, 14 + 8 * 3 + 4, char_RSSI, text, 3);
+        // ESP_ERROR_CHECK(gfx_present());
 
         vTaskDelay(pdMS_TO_TICKS(100));
-        i++;
+       
     }
 }
