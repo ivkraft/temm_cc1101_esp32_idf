@@ -5,9 +5,11 @@
 #include "driver/rmt_rx.h"
 #include "esp_log.h"
 #include <stdlib.h>
+#include "decoder.h"
 #include "board_pins.h"
 
 static const char *TAG = "DECODER";
+packet_t last_pkt = { .data = {0}, .len = 0, .updated = false };
 
 static QueueHandle_t rmt_rx_evt_queue = NULL;
 
@@ -65,12 +67,13 @@ void rmt_rx_loop_task(void *arg)
         {
             if (num_symbols < 32)
                 continue;
-            printf("\n--- Пакет (%d) ---\n", (int)num_symbols);
+            printf("\n--- Пакет PWM ---\n");
+
             uint32_t last_dur = 0;
             int last_lvl = -1;
             uint8_t current_byte = 0;
-            int bit_accumulator = 0;
-            const int BIT_BASE = 35; // Наша база 350 мкс (35 тиков)
+            int bit_count = 0;
+            int bytes_printed = 0; // Теперь переменная на месте
 
             for (size_t i = 0; i < num_symbols; i++)
             {
@@ -93,40 +96,50 @@ void rmt_rx_loop_task(void *arg)
                     }
                     else
                     {
-                        if (durs[j] < 3)
-                        {
-                            last_dur += durs[j];
-                        }
-                        else
-                        {
-                            // --- ЛОГИКА ДЕКОДИРОВАНИЯ ТУТ ---
-                            if (last_dur >= 10)
+                        // Реальный переход уровня
+                        if (durs[j] > 5)
+                        { // Игнорируем совсем мелкий шум
+
+                            // Нас интересует только длительность ПОЛОЖИТЕЛЬНОГО импульса
+                            if (last_lvl == 1)
                             {
-                                // Вычисляем, сколько бит "влезло" в накопленную длительность
-                                // Добавляем 0.5 для правильного округления: (dur + base/2) / base
-                                int num_bits = (last_dur + (BIT_BASE / 2)) / BIT_BASE;
+                                int bit = -1;
+                                if (last_dur >= 25 && last_dur <= 45)
+                                    bit = 0; // ~350 мкс
+                                else if (last_dur >= 60 && last_dur <= 85)
+                                    bit = 1; // ~700 мкс
 
-                                for (int b = 0; b < num_bits; b++)
+                                if (bit != -1)
                                 {
-                                    current_byte = (current_byte << 1) | (last_lvl ? 1 : 0);
-                                    bit_accumulator++;
+                                    current_byte = (current_byte << 1) | bit;
+                                    bit_count++;
 
-                                    if (bit_accumulator == 8)
+                                    if (bit_count == 8)
                                     {
-                                        printf("%02X ", current_byte); // Печатаем готовый байт
+                                        if (bytes_printed < sizeof(last_pkt.data))
+                                        {
+                                            last_pkt.data[bytes_printed] = current_byte;
+                                        }
+                                        bytes_printed++; // Считаем байты
+
+                                        // Твой старый printf остается
+                                        printf("%02X ", current_byte);
+
+                                        bit_count = 0;
                                         current_byte = 0;
-                                        bit_accumulator = 0;
                                     }
                                 }
                             }
-                            // -------------------------------
+
                             last_lvl = lvls[j];
                             last_dur = durs[j];
                         }
                     }
                 }
             }
-            printf("\n");
+            last_pkt.len = bytes_printed;
+            last_pkt.updated = true;
+            printf("\n--- Конец пакета ---\n");
         }
     }
 }

@@ -46,7 +46,8 @@
 
 static const char *TAG = "MAIN";
 
-void cc1101_power_on(bool on) {
+void cc1101_power_on(bool on)
+{
 
     gpio_config_t pwr_cfg = {
         .pin_bit_mask = 1ULL << PIN_POWER_EN,
@@ -61,7 +62,8 @@ void cc1101_power_on(bool on) {
 }
 
 // ---------------- app_main ----------------
-void app_main(void) {
+void app_main(void)
+{
     ESP_LOGI(TAG, "BOOT. Open serial now...");
     vTaskDelay(pdMS_TO_TICKS(2500));
     cc1101_power_on(true);
@@ -74,8 +76,7 @@ void app_main(void) {
         (int)p->tft_mosi,
         (int)p->tft_miso,
         (int)p->tft_cs,
-        (int)p->cc1101_cs
-    );
+        (int)p->cc1101_cs);
 
     // 1) общий SPI bus (один раз)
     ESP_ERROR_CHECK(shared_spi_init(
@@ -83,8 +84,7 @@ void app_main(void) {
         (int)p->tft_sclk,
         (int)p->tft_mosi,
         (int)p->tft_miso,
-        (BOARD_LCD_HRES * 40 * 2) + 64
-    ));
+        (BOARD_LCD_HRES * 40 * 2) + 64));
 
     // 2) display (без spi_bus_initialize внутри!)
     ESP_ERROR_CHECK(display_init(BOARD_LCD_SPI_HOST));
@@ -139,7 +139,7 @@ void app_main(void) {
     char char_RSSI[12];
 
     esp_err_t err;
-   err = cc1101_apply_preset_pairs_then_patable(&cc, subghz_device_cc1101_preset_2fsk_dev12khz_async_regs);
+    err = cc1101_apply_preset_pairs_then_patable(&cc, subghz_device_cc1101_preset_2fsk_dev12khz_async_regs);
     vTaskDelay(pdMS_TO_TICKS(40));
     ESP_ERROR_CHECK(cc1101_set_freq_hz(&cc, 314350000UL)); // 314.35 MHz
 
@@ -147,42 +147,74 @@ void app_main(void) {
     ESP_ERROR_CHECK(cc1101_enter_rx(&cc));
     vTaskDelay(pdMS_TO_TICKS(40));
 
-// ----------------------RMT
-
+    // ----------------------RMT
 
     // Блок фильтра УДАЛЯЕМ. Сразу включаем:
 
     // 4. ЗАПУСК ТВОЕЙ ЗАДАЧИ ИЗ decoder.c
     // Мы передаем rx_chan как аргумент (void *arg)
     xTaskCreatePinnedToCore(
-        rmt_rx_loop_task,   // Функция из decoder.c
-        "rmt_decoder",      // Имя
-        4096,               // Стек
-        NULL,    // Передаем хендл канала
-        5,                  // Приоритет
-        NULL, 
-        0                   // Ядро 1
+        rmt_rx_loop_task, // Функция из decoder.c
+        "rmt_decoder",    // Имя
+        4096,             // Стек
+        NULL,             // Передаем хендл канала
+        5,                // Приоритет
+        NULL,
+        1 // Ядро 1
     );
 
     ESP_LOGI("MAIN", "Декодер запущен!");
-// ----------------------
+    // ----------------------
 
-    while (1) {
-        // gfx_clear(bg);
-        // gfx_fill_rect(6, 6, W - 12, H - 12, panel);
-        // gfx_rect(6, 6, W - 12, H - 12, gfx_rgb565(60, 70, 85));
-        // int16_t rssi = -127;
-        // ESP_ERROR_CHECK(cc1101_read_rssi_dbm(&cc, &rssi));
-        // ESP_ERROR_CHECK(cc1101_read_status(&cc, CC1101_MARCSTATE, &marc));
+    while (1)
+    {
+        // В main.c внутри while(1)
+        if (last_pkt.updated)
+        {
+                        last_pkt.updated = false;
 
-        // snprintf(char_MARC, sizeof(char_MARC), "MARC=0x%02X", marc);
-        // snprintf(char_RSSI, sizeof(char_RSSI), "%d", rssi);
-        // gfx_text_scale(14, 14, char_MARC, text, 3);
+            // 1. Очищаем рабочую область (черный фон)
+            gfx_fill_rect(8, 50, W - 16, H - 70, panel);
 
-        // gfx_text_scale(14, 14 + 8 * 3 + 4, char_RSSI, text, 3);
-        // ESP_ERROR_CHECK(gfx_present());
+            char hex_str[4];
+            int start_x = 12;
+            int start_y = 55;
+            int x = start_x;
+            int y = start_y;
+            int col_width = 20;  // Ширина колонки для одного "XX "
+            int row_height = 10; // Высота строки
 
-        vTaskDelay(pdMS_TO_TICKS(100));
-       
+            // 2. Рисуем каждый байт
+            for (int b = 0; b < last_pkt.len; b++)
+            {
+                // Если дошли до края экрана — перенос строки
+                if (x + col_width > W - 10)
+                {
+                    x = start_x;
+                    y += row_height;
+                }
+
+                // Если пакет слишком длинный и не влезает в экран — выходим
+                if (y + row_height > H - 10)
+                    break;
+
+                snprintf(hex_str, sizeof(hex_str), "%02X", last_pkt.data[b]);
+
+                // Первые 5 байт (ID) выделим акцентным цветом, остальное — текстом
+                uint16_t c = (b < 5) ? accent : text;
+                gfx_text_scale(x, y, hex_str, c, 1); // Масштаб 2 для читаемости
+
+                x += col_width;
+            }
+
+            // 3. Выводим итоговую длину в углу
+            char len_info[24];
+            snprintf(len_info, sizeof(len_info), "LEN:%d", last_pkt.len);
+            gfx_text_scale(W - 100, 14, len_info, dim, 1);
+
+            ESP_ERROR_CHECK(gfx_present());
+            vTaskDelay(pdMS_TO_TICKS(20));
+        }
+        vTaskDelay(pdMS_TO_TICKS(20));
     }
 }
