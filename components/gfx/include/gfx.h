@@ -3,6 +3,10 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+
+
+
+
 void gfx_init(void); // выделяет framebuffer
 uint16_t gfx_w(void);
 uint16_t gfx_h(void);

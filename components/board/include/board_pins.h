@@ -36,6 +36,7 @@
 #define BOARD_CC1101_PIN_MOSI       BOARD_PIN_SPI_MOSI
 #define BOARD_CC1101_PIN_MISO       BOARD_PIN_SPI_MISO
 
+
 // Antenna switch (если реально используешь в коде)
 #define BOARD_CC1101_PIN_SW1        GPIO_NUM_47
 #define BOARD_CC1101_PIN_SW0        GPIO_NUM_48

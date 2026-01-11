@@ -19,6 +19,7 @@
 #include "board_pins.h"
 #include "cc1101.h"
 #include "cc1101_regs.h"
+#include "cc1101_presets.h"
 #include "display.h"
 #include "driver/gpio.h"
 #include "driver/spi_master.h"
@@ -106,8 +107,6 @@ void app_main(void) {
     ESP_ERROR_CHECK(cc1101_read_status(&cc, CC1101_MARCSTATE, &marc));
     ESP_LOGI(TAG, "CC1101 PART=0x%02X VER=0x%02X MARC=0x%02X", part, ver, marc);
 
-    ESP_ERROR_CHECK(cc1101_set_freq_hz(&cc, 314350000UL, 26000000UL));
-
     const uint16_t bg = gfx_rgb565(10, 12, 16);
     const uint16_t panel = gfx_rgb565(18, 22, 28);
     const uint16_t accent = gfx_rgb565(0, 120, 255);
@@ -139,14 +138,13 @@ void app_main(void) {
     char char_RSSI[12];
 
     esp_err_t err;
-    err = cc1101_write_reg(&cc, CC1101_MDMCFG0, 0x00);
-    err = cc1101_write_reg(&cc, CC1101_MDMCFG1, 0x02);
-    err = cc1101_write_reg(&cc, CC1101_MDMCFG2, 0x04);
+   err = cc1101_apply_preset_pairs_then_patable(&cc, subghz_device_cc1101_preset_2fsk_dev2_38khz_async_regs);
+    vTaskDelay(pdMS_TO_TICKS(40));
+    ESP_ERROR_CHECK(cc1101_set_freq_hz(&cc, 314350000UL)); // 314.35 MHz
 
     vTaskDelay(pdMS_TO_TICKS(40));
     ESP_ERROR_CHECK(cc1101_enter_rx(&cc));
     vTaskDelay(pdMS_TO_TICKS(40));
-
 
     while (1) {
         gfx_clear(bg);
@@ -163,7 +161,7 @@ void app_main(void) {
         gfx_text_scale(14, 14 + 8 * 3 + 4, char_RSSI, text, 3);
         ESP_ERROR_CHECK(gfx_present());
 
-        vTaskDelay(pdMS_TO_TICKS(500));
+        vTaskDelay(pdMS_TO_TICKS(100));
         i++;
     }
 }
