@@ -37,8 +37,11 @@ int gfx_text_width_scale(const char *s, int scale);
 
 esp_err_t gfx_present(void); // flush whole screen
 
-// Цвета: ВАЖНО — у тебя байты swapped (красный = 0x00F8).
+
 static inline uint16_t gfx_rgb565(uint8_t r, uint8_t g, uint8_t b) {
-    uint16_t c = ((r & 0xF8) << 8) | ((g & 0xFC) << 3) | (b >> 3); // 0xF800 red before swap
-    return (uint16_t)((c >> 8) | (c << 8));                        // byteswap16
+    // Меняем r и b местами для формата BGR565
+    uint16_t c = ((b & 0xF8) << 8) | ((r & 0xFC) << 3) | (g >> 3);
+    // Оставляем или убираем swap байтов в зависимости от того, 
+    // есть ли он в твоем драйвере (раз ты сказал, что сделал инверсию там)
+    return (uint16_t)((c >> 8) | (c << 8)); 
 }
