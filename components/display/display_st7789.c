@@ -87,7 +87,7 @@ esp_err_t display_init(spi_host_device_t host)
         .color_space = ESP_LCD_COLOR_SPACE_RGB,
         .bits_per_pixel = 16,
         // КЛЮЧЕВО: если у тебя “RGB565 bytes swapped” — это лечит мусор/цвета
-        .data_endian = LCD_RGB_DATA_ENDIAN_LITTLE,
+        .data_endian = LCD_RGB_ENDIAN_BGR,
         // при необходимости можно менять порядок элементов
         .rgb_ele_order = LCD_RGB_ELEMENT_ORDER_RGB,
     };
